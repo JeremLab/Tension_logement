@@ -95,7 +95,6 @@ logement <- read_xlsx("C:/Users/jeremie.dupont/Desktop/Stage/Logement/BDD stage.
   )
   )
   
-
 # Fonction modification----
 standardiser_residence <- function(data, colonne_residence = "Résidence") {
   data %>%
@@ -130,54 +129,42 @@ standardiser_residence <- function(data, colonne_residence = "Résidence") {
     ) %>%
     mutate(
       !!colonne_residence := case_when(
-        # Ajouter "Cité" pour les résidences spécifiques
         !!sym(colonne_residence) %in% c(
           "Albert Camus", "Albert Châtelet", "Bas-Liévin", "Evariste", 
           "Gaston Bachelard", "Gérard Philipe", "Hélène Boucher", 
           "Jean Mermoz", "Jules Mousseron", "Les Templiers", 
           "Robespierre", "Triolo"
-        ) ~ paste("Cité", !!sym(colonne_residence)),
-        # Ajouter "Résidence" pour les autres noms
+        ) ~ paste("Cité", !!sym(colonne_residence))
         TRUE ~ paste("Résidence", !!sym(colonne_residence))
       )
     )
 }
-# Définir une fonction pour traiter les données d'une année spécifique
+
 traiter_logement_par_annee <- function(logement, logement_annee, annee_gestion) {
   logement %>%
-    # Filtrer uniquement les données pour l'année spécifiée
     filter(`Année de gestion` == annee_gestion) %>%
-    # Faire une jointure avec uniquement les colonnes nécessaires
     left_join(
       logement_annee %>% select(`Résidence`, `PLACES1`, `PLACES2`, `PLACES3`, `PLACES4`, `PhaseC`),
       by = "Résidence"
     ) %>%
-    # Mettre à jour les colonnes "Places Tour"
     mutate(`Places Tour 1` = ifelse(`Sous-phase (Libellé)` == "Tour 1" & !is.na(`PLACES1`), PLACES1, `Places Tour 1`)) %>%
     mutate(`Places Tour 2` = ifelse(`Sous-phase (Libellé)` == "Tour 2" & !is.na(`PLACES2`), PLACES2, `Places Tour 2`)) %>%
     mutate(`Places Tour 3` = ifelse(`Sous-phase (Libellé)` == "Tour 3" & !is.na(`PLACES3`), PLACES3, `Places Tour 3`)) %>%
     mutate(`Places Tour 4` = ifelse(`Sous-phase (Libellé)` == "Tour 4" & !is.na(`PLACES4`), PLACES4, `Places Tour 4`)) %>%
     mutate(`Places phase complémentaire` = `PhaseC`) %>% 
-    # Supprimer les colonnes temporaires
     select(-`PLACES1`, -`PLACES2`, -`PLACES3`, -`PLACES4`,-`PhaseC`) %>%
-    # Calculer la colonne "Places Total"
     mutate(
       `Places Total` = `Places Tour 1`
       )
 }
 
-# Réintégrer les données pour toutes les années
 traiter_toutes_les_annees <- function(logement, logement_par_annee, annees) {
-  # Traiter chaque année et combiner les résultats
   logement_traite <- purrr::map_dfr(annees, function(annee) {
     traiter_logement_par_annee(logement, logement_par_annee[[as.character(annee)]], annee)
   })
-  
-  # Ajouter les autres années qui ne sont pas dans la liste traitée
   logement_autres_annees <- logement %>%
     filter(!`Année de gestion` %in% annees)
   
-  # Combiner le tout et trier par année de gestion
   bind_rows(logement_traite, logement_autres_annees) %>%
     arrange(`Année de gestion`)
 }
@@ -185,6 +172,7 @@ traiter_toutes_les_annees <- function(logement, logement_par_annee, annees) {
 ################################################
 ########      Modification Fichier      ########
 ################################################
+
 #Logement Dispo-----
 logementdispo <- read_xlsx("C:/Users/jeremie.dupont/Desktop/Stage/Logement/LogementDispo.xlsx")
 
@@ -227,12 +215,12 @@ logement2021 <- logement2021 %>%
   group_by(`Résidence`) %>%
   summarise(across(where(is.numeric), \(x) sum(x, na.rm = TRUE)))
 
-#Standardiser le nom des résidence
 logement2021 <- standardiser_residence(logement2021)
 
-# Trier les noms des résidences
 logement_sorted <- sort(unique(logement$Résidence))
 logement2021_sorted <- sort(unique(logement2021$Résidence))
+
+#Vérification si les noms des résidences sont présents dans les deux dataframes
 
 diff_logement <- setdiff(logement_sorted, logement2021_sorted)
 print("Présents dans logement mais pas dans logement2021 :")
@@ -321,8 +309,6 @@ diff_logement2024 <- setdiff(logement2023_sorted, logement_sorted)
 print("Présents dans logement2024 mais pas dans logement :")
 print(diff_logement2024)
 
-
-#Stocker les années dans une liste----
 logement_par_annee <- list(
   "2022" = logement2022,
   "2023" = logement2023,
@@ -332,74 +318,36 @@ logement_par_annee <- list(
 ################################################
 ########      Regroupement Fichier      ########
 ################################################
-#TEST 2021
+
 logement <- logement %>%
-  # Filtrer uniquement les données pour l'année 2021
   filter(`Année de gestion` == 2021) %>%
-  # Faire une jointure avec uniquement les colonnes nécessaires de logement2021
   left_join(
     logement2021 %>% select(`Résidence`, `TOUR 21-22`,`PhaseC`),
     by = "Résidence"
   ) %>%
-  # Mettre à jour la colonne "Nombre de places"
   mutate(`Places Tour 1` = ifelse(!is.na(`TOUR 21-22`), `TOUR 21-22`, `Places Tour 1`)) %>%
   mutate(`Places phase complémentaire` = ifelse(!is.na(`PhaseC`), `PhaseC`,`Places phase complémentaire`)) %>% 
   mutate(`Places Total`=`Places Tour 1`) %>%
-  # Supprimer la colonne temporaire "nb logement dispo"
   select(-`TOUR 21-22`,-`PhaseC`) %>%
-  # Réintégrer les autres années
   bind_rows(filter(logement, `Année de gestion` != 2021))
 
-#Test 2022
 logement <- traiter_toutes_les_annees(logement, logement_par_annee, c(2022,2023,2024))
 
 ################################################
 ########    Enregistrement Fichier      ########
 ################################################
-# Chemin
+
 output_path <- "C:/Users/jeremie.dupont/Desktop/Stage/Logement/BDD Suivi des demandes logement1.xlsx"
 
-# Enregistrer le dataframe modifié dans un fichier Excel
 write_xlsx(logement, output_path)
 
-# Message de confirmation
 cat("Le fichier modifié a été enregistré avec succès à l'emplacement suivant :\n", output_path)
-
-places1 <- logement %>% 
-  filter(!is.na(`Année de gestion`), !is.na(`Secteur`), !is.na(`Places Total`)) %>% 
-  distinct(`Année de gestion`, `Résidence`, .keep_all = TRUE) %>%  # Conserver une seule ligne par résidence et année
-  group_by(`Année de gestion`) %>%  
-  summarise(
-    Total_Places_Uniques = sum(`Places Total`),
-    .groups = "drop"
-  )
-
-print(places1)
-
-demandes1 <- logement %>% 
-  filter(!is.na(`Année de gestion`), !is.na(`Secteur`), !is.na(`INE`)) %>% 
-  distinct(`Année de gestion`, `Secteur`, `INE`) %>%  # Conserver une seule ligne par résidence et année
-  group_by(`Année de gestion`) %>%  
-  summarise(
-    Demande_unique = n(),
-    .groups = "drop"
-  )
- 
-print(demandes1)
-
-logement %>% 
-  filter(`Année de gestion` == 2023) %>% 
-  count(`Résidence`, `Places Total`) %>% 
-  arrange(desc(n))
 
 #--------- Logement dispo 
 
-# Chemin
 output_path1 <- "C:/Users/jeremie.dupont/Desktop/Stage/Logement/Logement_dispo.xlsx"
 
-# Enregistrer le dataframe modifié dans un fichier Excel
 write_xlsx(logementdispo, output_path1)
 
-# Message de confirmation
 cat("Le fichier modifié a été enregistré avec succès à l'emplacement suivant :\n", output_path1)
 
