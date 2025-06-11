@@ -334,7 +334,7 @@ logement <- logement %>%
 logement <- traiter_toutes_les_annees(logement, logement_par_annee, c(2022,2023,2024))
 
 ################################################
-########    Enregistrement Fichier      ########
+########    Enregistrement Fichier.      ########
 ################################################
 
 output_path <- "C:/Users/jeremie.dupont/Desktop/Stage/Logement/BDD Suivi des demandes logement1.xlsx"
