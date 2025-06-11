@@ -17,7 +17,7 @@ Test <- read_xlsx("C:/Users/jeremie.dupont/Desktop/Stage/Logement/Renouvellement
     `Taux acceptation` = round(`Renouvellement confirmé` / `Demandes renouvellement` * 100, 2)
   )
 
-#Test
+#Test.
 donnees_par_annee <- donnees_modele %>%
   group_by(`Contingent (Libellé)`) %>%
   summarise(nb_renouvellements = sum(nb_renouvellements), .groups = "drop")
