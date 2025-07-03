@@ -19,7 +19,8 @@ logement <- read_xlsx("C:/Users/jeremie.dupont/Desktop/Stage/Logement/BDD stage.
       `Résidence` %in% c(
         "Résidence Moulins-Parc Centre", "Résidence Arsenal des Postes", "Cité Albert Châtelet",
         "Résidence Courmont", "Résidence Jean Zay", "Résidence Guy de Maupassant",
-        "Résidence Georges Lefèvre", "Résidence Fives", "Cité Robespierre", "Cité Bas-Liévin"
+        "Résidence Georges Lefèvre", "Résidence Fives", "Cité Robespierre", "Cité Bas-Liévin",
+        "Résidence Maison Internationale des Chercheurs"
       ) ~ "Lille Centre",
       TRUE ~ `Secteur`
     )
@@ -134,29 +135,47 @@ standardiser_residence <- function(data, colonne_residence = "Résidence") {
           "Gaston Bachelard", "Gérard Philipe", "Hélène Boucher", 
           "Jean Mermoz", "Jules Mousseron", "Les Templiers", 
           "Robespierre", "Triolo"
-        ) ~ paste("Cité", !!sym(colonne_residence))
+        ) ~ paste("Cité", !!sym(colonne_residence)),
         TRUE ~ paste("Résidence", !!sym(colonne_residence))
       )
     )
+}
+
+safe_max <- function(x) {
+  if (all(is.na(x))) NA_real_ else max(x, na.rm = TRUE)
 }
 
 traiter_logement_par_annee <- function(logement, logement_annee, annee_gestion) {
   logement %>%
     filter(`Année de gestion` == annee_gestion) %>%
     left_join(
-      logement_annee %>% select(`Résidence`, `PLACES1`, `PLACES2`, `PLACES3`, `PLACES4`, `PhaseC`),
+      logement_annee %>% select(`Résidence`, `RESERVATIONS1`, `RESERVATIONS2`, `RESERVATIONS3`, `RESERVATIONS4`, `PhaseC`),
       by = "Résidence"
     ) %>%
-    mutate(`Places Tour 1` = ifelse(`Sous-phase (Libellé)` == "Tour 1" & !is.na(`PLACES1`), PLACES1, `Places Tour 1`)) %>%
-    mutate(`Places Tour 2` = ifelse(`Sous-phase (Libellé)` == "Tour 2" & !is.na(`PLACES2`), PLACES2, `Places Tour 2`)) %>%
-    mutate(`Places Tour 3` = ifelse(`Sous-phase (Libellé)` == "Tour 3" & !is.na(`PLACES3`), PLACES3, `Places Tour 3`)) %>%
-    mutate(`Places Tour 4` = ifelse(`Sous-phase (Libellé)` == "Tour 4" & !is.na(`PLACES4`), PLACES4, `Places Tour 4`)) %>%
-    mutate(`Places phase complémentaire` = `PhaseC`) %>% 
-    select(-`PLACES1`, -`PLACES2`, -`PLACES3`, -`PLACES4`,-`PhaseC`) %>%
     mutate(
-      `Places Total` = `Places Tour 1`
-      )
+      `Places Tour 1` = ifelse(`Sous-phase (Libellé)` == "Tour 1" & !is.na(RESERVATIONS1), RESERVATIONS1, `Places Tour 1`),
+      `Places Tour 2` = ifelse(`Sous-phase (Libellé)` == "Tour 2" & !is.na(RESERVATIONS2), RESERVATIONS2, `Places Tour 2`),
+      `Places Tour 3` = ifelse(`Sous-phase (Libellé)` == "Tour 3" & !is.na(RESERVATIONS3), RESERVATIONS3, `Places Tour 3`),
+      `Places Tour 4` = ifelse(`Sous-phase (Libellé)` == "Tour 4" & !is.na(RESERVATIONS4), RESERVATIONS4, `Places Tour 4`),
+      `Places phase complémentaire` = `PhaseC`
+    ) %>%
+    group_by(`Résidence`) %>%
+    mutate(
+      `Places Total` = {
+        vals <- c(
+          safe_max(`Places Tour 1`),
+          safe_max(`Places Tour 2`),
+          safe_max(`Places Tour 3`),
+          safe_max(`Places Tour 4`),
+          safe_max(`Places phase complémentaire`)
+        )
+        if (all(is.na(vals))) NA_real_ else sum(vals, na.rm = TRUE)
+      }
+    ) %>%
+    ungroup() %>%
+    select(-`RESERVATIONS1`, -`RESERVATIONS2`, -`RESERVATIONS3`, -`RESERVATIONS4`, -`PhaseC`)
 }
+
 
 traiter_toutes_les_annees <- function(logement, logement_par_annee, annees) {
   logement_traite <- purrr::map_dfr(annees, function(annee) {
@@ -180,10 +199,10 @@ logementdispo <- logementdispo %>%
   filter(!is.na(`Résidence`), !is.na(`Nombre logement`))
 
 logementdispo <- logementdispo %>%
-  filter(!is.na(`Résidence`)) %>% 
-  filter(`Résidence` != "HLM", `Résidence` != "Maison des Gardes",`Résidence` != "TOTAL") %>%
-  group_by(`Résidence`,`Année de gestion`) %>%
-  summarise(across(where(is.numeric), \(x) sum(x, na.rm = TRUE)))
+  filter(!is.na(`Résidence`)) %>%
+  filter(`Résidence` != "TOTAL") %>%
+  group_by(`Résidence`, `Année de gestion`) %>%
+  summarise(across(where(is.numeric), ~sum(.x, na.rm = TRUE)), .groups = "drop")
 
 #Standardiser le nom des résidence
 logementdispo <- standardiser_residence(logementdispo)
@@ -211,7 +230,7 @@ logement2021 <- logement2021 %>%
 
 logement2021 <- logement2021 %>%
   filter(!is.na(`Résidence`)) %>% 
-  filter(`Résidence` != "HLM", `Résidence` != "Maison des Gardes",`Résidence` != "TOTAL") %>%
+  filter(`Résidence` != "HLM",`Résidence` != "TOTAL") %>%
   group_by(`Résidence`) %>%
   summarise(across(where(is.numeric), \(x) sum(x, na.rm = TRUE)))
 
@@ -227,6 +246,7 @@ print("Présents dans logement mais pas dans logement2021 :")
 print(diff_logement)
 
 diff_logement2021 <- setdiff(logement2021_sorted, logement_sorted)
+
 print("Présents dans logement2021 mais pas dans logement :")
 print(diff_logement2021)
 
@@ -273,14 +293,14 @@ logement2023 <- standardiser_residence(logement2023)
 # Trier les noms des résidences de chaque dataframe
 logement2023_sorted <- sort(unique(logement2023$Résidence))
 
-# Afficher les noms présents dans logement mais pas dans logement2022
+# Afficher les noms présents dans logement mais pas dans logement2023
 diff_logement3 <- setdiff(logement_sorted, logement2023_sorted)
 print("Présents dans logement mais pas dans logement2023 :")
 print(diff_logement3)
 
-# Afficher les noms présents dans logement2021 mais pas dans logement
+# Afficher les noms présents dans logement2023 mais pas dans logement
 diff_logement2023 <- setdiff(logement2023_sorted, logement_sorted)
-print("Présents dans logement2022 mais pas dans logement :")
+print("Présents dans logement2023 mais pas dans logement :")
 print(diff_logement2023)
 #2024-----
 logement2024 <- read_xlsx("C:/Users/jeremie.dupont/Desktop/Stage/Logement/RESULTATS TOUR LOGEMENT 2024-2025 – Jérémie.xlsx")
@@ -299,20 +319,48 @@ logement2024 <- standardiser_residence(logement2024)
 # Trier les noms des résidences de chaque dataframe
 logement2024_sorted <- sort(unique(logement2024$Résidence))
 
-# Afficher les noms présents dans logement mais pas dans logement2022
+# Afficher les noms présents dans logement mais pas dans logement2024
 diff_logement4 <- setdiff(logement_sorted, logement2024_sorted)
 print("Présents dans logement mais pas dans logement2024 :")
 print(diff_logement4)
 
-# Afficher les noms présents dans logement2021 mais pas dans logement
+# Afficher les noms présents dans logement2024 mais pas dans logement
 diff_logement2024 <- setdiff(logement2023_sorted, logement_sorted)
 print("Présents dans logement2024 mais pas dans logement :")
 print(diff_logement2024)
 
+#2025-----
+logement2025 <- read_xlsx("C:/Users/jeremie.dupont/Desktop/Stage/Logement/RESULTATS TOUR LOGEMENT 2025-2026 – Jérémie.xlsx")
+
+logement2024 <- logement2024 %>%
+  fill(`Résidence`, .direction = "down") 
+
+logement2025 <- logement2024 %>%
+  filter(!is.na(`Résidence`)) %>% 
+  filter(`Résidence` != "Résidence Jean Zay", `Résidence` != "TOTAL",`Résidence` != "Robespierre") %>%
+  group_by(`Résidence`) %>%
+  summarise(across(where(is.numeric), \(x) sum(x, na.rm = TRUE)))
+
+logement2025 <- standardiser_residence(logement2024)
+
+# Trier les noms des résidences de chaque dataframe
+logement2025_sorted <- sort(unique(logement2025$Résidence))
+
+# Afficher les noms présents dans logement mais pas dans logement2025
+diff_logement5 <- setdiff(logement_sorted, logement2025_sorted)
+print("Présents dans logement mais pas dans logement2025 :")
+print(diff_logement5)
+
+# Afficher les noms présents dans logement2021 mais pas dans logement
+diff_logement2025 <- setdiff(logement2023_sorted, logement_sorted)
+print("Présents dans logement2025 mais pas dans logement :")
+print(diff_logement2025)
+
 logement_par_annee <- list(
   "2022" = logement2022,
   "2023" = logement2023,
-  "2024" = logement2024
+  "2024" = logement2024,
+  "2025" = logement2025
 )
 
 ################################################
@@ -332,6 +380,45 @@ logement <- logement %>%
   bind_rows(filter(logement, `Année de gestion` != 2021))
 
 logement <- traiter_toutes_les_annees(logement, logement_par_annee, c(2022,2023,2024))
+
+logementdispo <- logementdispo %>%
+  left_join(
+    logement_unique1 %>% select(`Résidence`, `Secteur`) %>% distinct(),
+    by = "Résidence"
+  )
+
+dispo_unique <- logementdispo %>%
+  select(`Résidence`, `Année de gestion`, `Nombre logement`, `Secteur`) %>%
+  distinct()
+
+logement_unique <- logement %>%
+  select(`Résidence`, `Année de gestion`)
+
+manquantes <- anti_join(dispo_unique, logement_unique, by = c("Résidence", "Année de gestion"))
+
+manquantes <- manquantes %>%
+  mutate(
+    Résidence = str_replace_all(Résidence, "[\r\n]", " "), 
+    Résidence = str_squish(Résidence),
+    Secteur = case_when(
+      is.na(Secteur) & Résidence == "Résidence Maison Internationale des Chercheurs" ~ "Lille Centre",
+      is.na(Secteur) & Résidence == "Résidence HLM" ~ "Lille Est",
+      is.na(Secteur) & Résidence == "Résidence Maison des Gardes" ~ "Lens-Liévin",
+      TRUE ~ Secteur
+    )
+  )
+
+colonnes_supp <- setdiff(names(logement), names(manquantes))
+for (col in colonnes_supp) {
+  if (is.numeric(logement[[col]])) {
+    manquantes[[col]] <- NA_real_
+  } else {
+    manquantes[[col]] <- NA
+  }
+}
+manquantes <- manquantes[, names(logement)]
+
+logement <- bind_rows(logement, manquantes)
 
 ################################################
 ########    Enregistrement Fichier.      ########
