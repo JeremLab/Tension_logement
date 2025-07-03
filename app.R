@@ -305,7 +305,7 @@ server <- function(input, output, session) {
       tmp_dir <- tempfile()
       dir.create(tmp_dir)
 
-      # --- Demandes ---
+      # --- Demandes ----
       demandes <- data() %>%
         filter(!is.na(`Secteur`), !is.na(`INE`)) %>%
         distinct(`Année de gestion`, `Secteur`, `INE`) %>%
@@ -540,7 +540,7 @@ server <- function(input, output, session) {
         ggsave(filename = file_path, plot = p, width = 16, height = 8, dpi = 150)
       }
 
-      # ZIP : chemins relatifs pour Windows
+      # Création du zip
       oldwd <- setwd(tmp_dir)
       on.exit(setwd(oldwd))
       all_pngs <- list.files(tmp_dir, pattern = "\\.png$", full.names = FALSE)
@@ -939,7 +939,7 @@ server <- function(input, output, session) {
         group_by(`Année de gestion`) %>%
         summarise(`Demandes_tour_4_filtrees` = n(), .groups = "drop")
 
-      # Phase complémentaire
+      # Phase complémentaire ---------
       places_complémentaire <- filtered_data %>%
         filter(!is.na(`Secteur`), !is.na(`Places phase complémentaire`), !is.na(`Année de gestion`)) %>%
         distinct(`Année de gestion`, `Secteur`, `Résidence`, `Places phase complémentaire`) %>%
@@ -949,7 +949,7 @@ server <- function(input, output, session) {
             sum(`Places phase complémentaire`, na.rm = TRUE), .groups = "drop"
         )
 
-      # Résumé année globale avec tension réajustée ET tension brute
+      # Résumé année globale---------
       resume_annee <- place_data %>%
         group_by(`Année de gestion`) %>%
         summarise(
@@ -1079,6 +1079,7 @@ server <- function(input, output, session) {
     }
   )
 
+  #Global Tableau-----
   output$download_tab2 <- downloadHandler(
     filename = function() {
       paste0("Tableau global", ".xlsx")
@@ -1163,6 +1164,7 @@ server <- function(input, output, session) {
   )
 
   #----------- Graphique --------------
+  #Cartographie-----
   output$NPDC <- renderPlot(
     {
       req(data())
@@ -1377,7 +1379,8 @@ server <- function(input, output, session) {
     },
     res = 80
   )
-
+  
+  #Résumé des tensions par résidence-----
   output$bubbleChart1 <- renderPlotly({
     req(data())
     places_par_residence1 <- data() %>%
@@ -1408,7 +1411,7 @@ server <- function(input, output, session) {
         tolower(Secteur) %in% tolower(input$bassin),
         `Année de gestion` == input$select_annee
       )
-    # Filtrer les 10 résidences avec le plus de tension
+    # 10 résidences avec le plus de tension
     top10 <- tension_data1 %>%
       group_by(`Année de gestion`) %>%
       mutate(Résidence = factor(Résidence, levels = sort(unique(Résidence)))) %>%
@@ -1443,6 +1446,8 @@ server <- function(input, output, session) {
 
     ggplotly(p1, tooltip = "text")
   })
+  
+  #Graphique global 
   output$graph2 <- renderPlotly({
     req(data())
 
@@ -1538,7 +1543,6 @@ server <- function(input, output, session) {
       ) %>%
       arrange(`Année de gestion`)
 
-    # Graphique avec plotly
     plot_ly(resume_annee, x = ~ factor(`Année de gestion`)) %>%
       add_bars(
         y = ~`Étudiants demandeurs`, name = "Étudiants demandeurs",
@@ -1613,6 +1617,8 @@ server <- function(input, output, session) {
         )
       )
   })
+  
+  #Population boursières ----
   output$graph_boursiers <- renderPlotly({
     req(data(), input$select_annee, input$bassin)
 
@@ -1731,6 +1737,7 @@ server <- function(input, output, session) {
   })
 
   #----------- Tableau Interractif -----------
+  #Secteurs ----
   output$preview <- renderDT({
     req(data())
 
@@ -1879,6 +1886,8 @@ server <- function(input, output, session) {
       )
     )
   })
+  
+  #Résidences -----
   output$résidence <- renderDT({
     req(data()) # Vérifie que les données existent
 
@@ -1975,6 +1984,8 @@ server <- function(input, output, session) {
       class = "stripe hover"
     )
   })
+  
+  #Global ----
   output$global <- renderDT({
     req(data())
 
@@ -2090,6 +2101,8 @@ server <- function(input, output, session) {
       class = "stripe hover"
     )
   })
+  
+  #Boursiers ----
   output$boursiers <- renderDT({
     req(data(), input$select_annee, input$bassin)
 
