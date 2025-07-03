@@ -105,7 +105,7 @@ ui <- fluidPage(
           tags$ul(
             tags$li(
               strong("Secteur :"), " Dans cette page vous trouverez des cartes et tableaux récapitulatif de la tension tension par secteur. ", br(),
-              em("Note : "), "vous pouvez basculer entre la tension brute et pondérée en cliquant sur les boutons correspondants sous le graphique."
+              em("Note : "), "vous pouvez basculer entre la tension brute et réajustée en cliquant sur les boutons correspondants sous le graphique."
             ), br(),
             tags$li(
               strong("Résidence :"), " Analyse par résidence, classement des résidences selon la tension.", br(),
@@ -140,8 +140,8 @@ ui <- fluidPage(
             ),
             div(
               style = "display: flex; justify-content: flex-end;",
-              actionButton("btn1", "Brut"),
-              actionButton("btn2", "Réel")
+              actionButton("btn1", "Brute"),
+              actionButton("btn2", "réajustée")
             ),
             br(), br(),
             downloadButton("download_tab", label = "Télécharger le tableau", icon = icon("save")),
@@ -185,7 +185,7 @@ ui <- fluidPage(
               "Nombre total de logements étudiants disponibles au sein du CROUS."
             ), br(),
             tags$li(
-              strong("Places disponibles : "),
+              strong("Places proposées : "),
               "Nombre de places proposées lors du tour principal d’attribution des logements, après retrait des demandes de renouvellement, travaux, etc."
             ), br(),
             tags$li(
@@ -194,11 +194,12 @@ ui <- fluidPage(
             ), br(),
             tags$li(
               strong("(% ) Non réservé : "),
-              "Pourcentage de places restées sans attribution après la phase complémentaire, par rapport au nombre total de places disponibles."
+              "Pourcentage de places restées sans attribution après la phase complémentaire, par rapport au nombre total de Places proposées."
             ), br(),
             tags$li(
               strong("Étudiants demandeurs : "),
-              "Nombre d’étudiants distincts ayant formulé au moins une demande dans le secteur (un étudiant n’est comptabilisé qu’une seule fois, même s’il a fait plusieurs demandes dans ce secteur)."
+              "Nombre d’étudiants distincts ayant formulé au moins une demande dans le secteur. 
+              Chaque étudiant n’est comptabilisé qu’une seule fois, quel que soit le nombre de demandes déposées pour le même secteur et sur l’ensemble des tours."
             ), br(),
             tags$li(
               strong("Étudiants demandeurs dernier tour : "),
@@ -210,18 +211,18 @@ ui <- fluidPage(
             ), br(),
             tags$li(
               strong("Tension brute : "),
-              "Indicateur de pression de la demande : nombre de demandes rapporté au nombre de places disponibles au tour principal.",
+              "Indicateur de pression de la demande : nombre de demandes rapporté au nombre de Places proposées au tour principal.",
               tags$br(), br(),
-              em("Calcul : Demandes / Places disponibles au tour")
+              em("Calcul : Demandes / Places proposées au tour")
             ), br(),
             tags$li(
-              strong("Tension pondérée : "),
+              strong("Tension réajustée : "),
               "Indicateur prenant en compte la spécificité du dernier tour, en intégrant les places restées vacantes lors de la phase complémentaire. Il reflète l’« effet Parcoursup », où tous les candidats voient leurs choix acceptés lors du dernier tour logement.",
               tags$br(), br(),
-              em("Calcul : (Étudiants demandeurs du dernier tour* + Places réservées**) / Places disponibles au tour"),
+              em("Calcul : (Étudiants demandeurs du dernier tour* + Places réservées**) / Places proposées au tour"),
               tags$br(), br(),
               em("*En excluant les candidats non boursiers ainsi que ceux dont les revenus dépassent les seuils, afin de cibler uniquement le public éligible"),
-              br(), em("** Places réservées = Places disponibles au tour – Places non réservées par les étudiants")
+              br(), em("** Places réservées = Places proposées au tour – Places non réservées par les étudiants")
             ), br(),
             tags$li(
               strong("Renouvellement confirmé : "),
@@ -282,14 +283,14 @@ server <- function(input, output, session) {
     )
   })
 
-  graph_choice <- reactiveVal("brut")
+  graph_choice <- reactiveVal("Brute")
 
   observeEvent(input$btn1, {
-    graph_choice("brut")
+    graph_choice("Brute")
   })
 
   observeEvent(input$btn2, {
-    graph_choice("réel")
+    graph_choice("réajustée")
   })
 
 
@@ -359,7 +360,7 @@ server <- function(input, output, session) {
         filter(!is.na(`Secteur`), !is.na(`Places Total`), !is.na(`Résidence`), !is.na(`Année de gestion`)) %>%
         distinct(`Année de gestion`, `Secteur`, `Résidence`, `Places Total`) %>%
         group_by(`Année de gestion`, `Secteur`) %>%
-        summarise(`Places disponibles` = sum(`Places Total`, na.rm = TRUE), .groups = "drop")
+        summarise(`Places proposées` = sum(`Places Total`, na.rm = TRUE), .groups = "drop")
 
       coords_secteur <- data() %>%
         filter(!is.na(`Secteur`), !is.na(`Latitude`), !is.na(`Longitude`), !is.na(`Année de gestion`)) %>%
@@ -381,11 +382,11 @@ server <- function(input, output, session) {
         left_join(places_complémentaire, by = c("Année de gestion", "Secteur")) %>%
         left_join(demandes_tour4_filtrees, by = c("Année de gestion", "Secteur")) %>%
         mutate(
-          `Tension brut` = round(Demandes / `Places disponibles`, 2),
+          `Tension Brute` = round(Demandes / `Places proposées`, 2),
           moyenne_poids = mean(poids_secteur, na.rm = TRUE),
           `Concentration secteur` = round(poids_secteur / moyenne_poids, 2),
-          `Tension pondérée` = round((`Demandes_tour_4_filtres` + (`Places disponibles` - `Places phase complémentaire`))
-          / `Places disponibles`, 2)
+          `Tension Réajustée` = round((`Demandes_tour_4_filtres` + (`Places proposées` - `Places phase complémentaire`))
+          / `Places proposées`, 2)
         )
 
       # --- Définition des bassins ---
@@ -420,8 +421,8 @@ server <- function(input, output, session) {
 
         map_data <- map_data %>%
           mutate(
-            classe_brute = as.character(cut(`Tension brut`, breaks = c(-Inf, 1, 5, 8, 10, Inf), labels = c("≤1", "1 à 4", "5 à 7", "8 à 9", ">10"), right = FALSE)),
-            classe_pond  = as.character(cut(`Tension pondérée`, breaks = c(-Inf, 1, 5, 8, 10, Inf), labels = c("≤1", "1 à 4", "5 à 7", "8 à 9", ">10"), right = FALSE)),
+            classe_brute = as.character(cut(`Tension Brute`, breaks = c(-Inf, 1, 5, 8, 10, Inf), labels = c("≤1", "1 à 4", "5 à 7", "8 à 9", ">10"), right = FALSE)),
+            classe_pond  = as.character(cut(`Tension Réajustée`, breaks = c(-Inf, 1, 5, 8, 10, Inf), labels = c("≤1", "1 à 4", "5 à 7", "8 à 9", ">10"), right = FALSE)),
             brute_size   = size_map[classe_brute],
             pond_size    = size_map[classe_pond]
           )
@@ -430,18 +431,18 @@ server <- function(input, output, session) {
           map_data %>%
             mutate(
               Type = "Brute",
-              Tension = `Tension brut`,
+              Tension = `Tension Brute`,
               Longitude = Longitude,
               Latitude = Latitude,
               Label = paste0(Secteur, "\nBrute\n", Tension)
             ),
           map_data %>%
             mutate(
-              Type = "Pondérée",
-              Tension = `Tension pondérée`,
+              Type = "Réajustée",
+              Tension = `Tension Réajustée`,
               Longitude = Longitude + coef_lon * (brute_size + pond_size) / (2 * cos(Latitude * pi / 180)),
               Latitude = Latitude - coef_lat * (brute_size + pond_size) / 2,
-              Label = paste0(Secteur, "\nPondérée\n", Tension)
+              Label = paste0(Secteur, "\nRéajustée\n", Tension)
             )
         ) %>%
           mutate(
@@ -613,7 +614,7 @@ server <- function(input, output, session) {
         distinct(`Année de gestion`, `Secteur`, `Résidence`, `Places Total`) %>%
         group_by(`Année de gestion`, `Secteur`) %>%
         summarise(
-          `Places disponibles` = sum(`Places Total`, na.rm = TRUE),
+          `Places proposées` = sum(`Places Total`, na.rm = TRUE),
           .groups = "drop"
         )
       coords_secteur <- data() %>%
@@ -639,12 +640,12 @@ server <- function(input, output, session) {
         left_join(places_complémentaire, by = c("Année de gestion", "Secteur")) %>%
         left_join(demandes_tour4_filtrees, by = c("Année de gestion", "Secteur")) %>%
         mutate(
-          `Tension brut` = round(Demandes / `Places disponibles`, 2),
+          `Tension Brute` = round(Demandes / `Places proposées`, 2),
           moyenne_poids = mean(poids_secteur, na.rm = TRUE),
           `Concentration secteur` = round(poids_secteur / moyenne_poids, 2),
-          `Tension pondérée` = round((`Demandes_tour_4_filtres` +
-            (`Places disponibles` - `Places phase complémentaire`))
-          / `Places disponibles`, 2),
+          `Tension réajustée` = round((`Demandes_tour_4_filtres` +
+            (`Places proposées` - `Places phase complémentaire`))
+          / `Places proposées`, 2),
         )
 
       map_data <- tension %>%
@@ -653,7 +654,7 @@ server <- function(input, output, session) {
           `Année de gestion` == input$select_annee
         )
 
-      tension_col <- if (graph_choice() == "brut") "Tension brut" else "Tension pondérée"
+      tension_col <- if (graph_choice() == "Brute") "Tension Brute" else "Tension réajustée"
       map_data$label <- paste0(map_data$Secteur, "\n", map_data[[tension_col]])
 
       map_data$tension_classe <- cut(
@@ -709,7 +710,7 @@ server <- function(input, output, session) {
             "8 à 9" = "8 à 9",
             ">10" = ">10"
           ),
-          name = paste("Tension", if (graph_choice() == "brut") "brute" else "réelle")
+          name = paste("Tension", if (graph_choice() == "Brute") "brute" else "réajustée")
         ) +
         scale_size_manual(
           values = c(
@@ -726,7 +727,7 @@ server <- function(input, output, session) {
             "8 à 9" = "8 à 9",
             ">10" = ">10"
           ),
-          name = paste("Tension", if (graph_choice() == "brut") "brute" else "réelle")
+          name = paste("Tension", if (graph_choice() == "Brute") "brute" else "réajustée")
         ) +
         guides(
           fill = guide_legend(override.aes = list(shape = 21, color = "white")),
@@ -734,8 +735,8 @@ server <- function(input, output, session) {
         ) +
         ggtitle(
           paste0(
-            "Taux de tension ",
-            if (graph_choice() == "brut") "brut" else "pondérée",
+            "Tension ",
+            if (graph_choice() == "Brute") "brute" else "réajustée",
             " par secteur en ",
             input$select_annee
           )
@@ -816,7 +817,7 @@ server <- function(input, output, session) {
         left_join(places_par_residence, by = c("Année de gestion", "Secteur")) %>%
         left_join(demandes_tour4, by = c("Année de gestion", "Secteur")) %>%
         mutate(
-          `Tension brute` = round(`Étudiants demandeurs` / `Places disponibles`, 2),
+          `Tension brute` = round(`Étudiants demandeurs` / `Places proposées`, 2),
           moyenne_poids = mean(poids_secteur, na.rm = TRUE),
           `Concentration secteur` = round(poids_secteur / moyenne_poids, 2),
           `Concentration secteur (%)` = round(poids_secteur * 100, 2),
@@ -851,14 +852,14 @@ server <- function(input, output, session) {
 
       final <- filter_data %>%
         mutate(
-          `(%) Non réservé` = round(`Places phase complémentaire` / `Places disponibles` * 100, 2),
-          `Tension pondérée` = round((`Demandes_tour_4_filtres` + (`Places disponibles` -
-            `Places phase complémentaire`)) / `Places disponibles`, 2),
+          `(%) Non réservé` = round(`Places phase complémentaire` / `Places proposées` * 100, 2),
+          `Tension réajustée` = round((`Demandes_tour_4_filtres` + (`Places proposées` -
+            `Places phase complémentaire`)) / `Places proposées`, 2),
         ) %>%
         select(
-          `Année de gestion`, `Secteur`, `Logement total`, `Places disponibles`,
+          `Année de gestion`, `Secteur`, `Logement total`, `Places proposées`,
           `Places phase complémentaire`, `(%) Non réservé`, `Étudiants demandeurs`, `Étudiants demandeurs dernier tour`,
-          `Concentration secteur (%)`, `Tension brute`, `Tension pondérée`,
+          `Concentration secteur (%)`, `Tension brute`, `Tension réajustée`,
           `Renouvellement confirmé`, `(%) du parc`
         )
 
@@ -876,7 +877,7 @@ server <- function(input, output, session) {
         filter(!is.na(`Secteur`)) %>%
         filter(tolower(`Secteur`) %in% tolower(input$bassin))
 
-      # Places
+      # Places ------------------ 
       places_total_résidence <- data() %>%
         filter(
           !is.na(`Secteur`), !is.na(`Nombre logement`), !is.na(`Résidence`),
@@ -890,9 +891,9 @@ server <- function(input, output, session) {
         filter(!is.na(`Places Total`), !is.na(`Année de gestion`), !is.na(`Secteur`), !is.na(`Résidence`)) %>%
         distinct(`Année de gestion`, `Secteur`, `Résidence`, .keep_all = TRUE) %>%
         group_by(`Année de gestion`, `Secteur`) %>%
-        summarise(`Places disponibles` = sum(`Places Total`, na.rm = TRUE), .groups = "drop")
+        summarise(`Places proposées` = sum(`Places Total`, na.rm = TRUE), .groups = "drop")
 
-      # Demandes
+      # Demandes----------------
       demandes <- filtered_data %>%
         filter(!is.na(`INE`), !is.na(`Année de gestion`), !is.na(`Secteur`)) %>%
         distinct(`Année de gestion`, `Secteur`, `INE`) %>%
@@ -915,6 +916,28 @@ server <- function(input, output, session) {
         summarise(`Étudiants demandeurs dernier tour` = n(), .groups = "drop") %>%
         group_by(`Année de gestion`) %>%
         summarise(`Étudiants demandeurs dernier tour` = sum(`Étudiants demandeurs dernier tour`), .groups = "drop")
+      
+      demandes_filtrees <- data() %>%
+        filter(
+          !is.na(`INE`), !is.na(`Echelon social`),
+          !(`Echelon social` %in% c("", "Hors Barème"))
+        ) %>%
+        distinct(`Année de gestion`,`Secteur`, `INE`) %>% 
+        group_by(`Année de gestion`) %>%
+        summarise(`Demandes 1` = n(), .groups = "drop")
+      
+      demandes_tour4_filtrees <- data() %>%
+        filter(
+          !is.na(INE), !is.na(`Sous-phase (Libellé)`), !is.na(`Echelon social`),
+          !(`Echelon social` %in% c("", "Hors Barème"))
+        ) %>%
+        mutate(num_tour = as.numeric(gsub("\\D", "", `Sous-phase (Libellé)`))) %>%
+        group_by(`Année de gestion`, `INE`) %>%
+        filter(num_tour == max(num_tour, na.rm = TRUE)) %>%
+        ungroup() %>%
+        distinct(`Année de gestion`, INE, `Secteur`) %>%
+        group_by(`Année de gestion`) %>%
+        summarise(`Demandes_tour_4_filtrees` = n(), .groups = "drop")
 
       # Phase complémentaire
       places_complémentaire <- filtered_data %>%
@@ -926,11 +949,11 @@ server <- function(input, output, session) {
             sum(`Places phase complémentaire`, na.rm = TRUE), .groups = "drop"
         )
 
-      # Résumé année globale avec tension pondérée ET tension brute
+      # Résumé année globale avec tension réajustée ET tension brute
       resume_annee <- place_data %>%
         group_by(`Année de gestion`) %>%
         summarise(
-          `Places disponibles` = sum(`Places disponibles`, na.rm = TRUE),
+          `Places proposées` = sum(`Places proposées`, na.rm = TRUE),
           .groups = "drop"
         ) %>%
         left_join(
@@ -941,22 +964,23 @@ server <- function(input, output, session) {
         ) %>%
         left_join(places_complémentaire, by = "Année de gestion") %>%
         left_join(demandes_tour4, by = "Année de gestion") %>%
+        left_join(demandes_tour4_filtrees, by = "Année de gestion") %>%
         mutate(
-          `Tension pondérée` = round((`Étudiants demandeurs dernier tour` + (`Places disponibles` -
-            `Places phase complémentaire`)) / `Places disponibles`, 2),
-          `Tension brute` = round(`Étudiants demandeurs` / `Places disponibles`, 2)
+          `Tension réajustée` = round((`Demandes_tour_4_filtrees` + (`Places proposées` -
+            `Places phase complémentaire`)) / `Places proposées`, 2),
+          `Tension brute` = round(`Étudiants demandeurs` / `Places proposées`, 2)
         ) %>%
         arrange(`Année de gestion`)
 
       d_long <- tidyr::pivot_longer(
         resume_annee,
-        cols = c(`Étudiants demandeurs`, `Étudiants demandeurs dernier tour`, `Places disponibles`, `Places phase complémentaire`),
+        cols = c(`Étudiants demandeurs`, `Étudiants demandeurs dernier tour`, `Places proposées`, `Places phase complémentaire`),
         names_to = "type",
         values_to = "valeur"
       )
 
       max_y <- max(d_long$valeur, na.rm = TRUE)
-      max_tension <- max(resume_annee$`Tension pondérée`, resume_annee$`Tension brute`, na.rm = TRUE)
+      max_tension <- max(resume_annee$`Tension réajustée`, resume_annee$`Tension brute`, na.rm = TRUE)
 
       p <- ggplot() +
         geom_col(
@@ -969,26 +993,26 @@ server <- function(input, output, session) {
           aes(x = as.factor(`Année de gestion`), y = valeur, label = valeur, group = type),
           position = position_dodge(width = 0.8), vjust = -0.5, size = 3
         ) +
-        # Courbe tension pondérée
+        # Courbe tension réajustée
         geom_line(
           data = resume_annee,
-          aes(x = as.factor(`Année de gestion`), y = `Tension pondérée` * max_y / max_tension, group = 1, color = "Tension pondérée"),
+          aes(x = as.factor(`Année de gestion`), y = `Tension réajustée` * max_y / max_tension, group = 1, color = "Tension réajustée"),
           size = 1.2
         ) +
         geom_point(
           data = resume_annee,
-          aes(x = as.factor(`Année de gestion`), y = `Tension pondérée` * max_y / max_tension, color = "Tension pondérée"),
+          aes(x = as.factor(`Année de gestion`), y = `Tension réajustée` * max_y / max_tension, color = "Tension réajustée"),
           size = 3
         ) +
         geom_text(
           data = resume_annee,
           aes(
             x = as.factor(`Année de gestion`),
-            y = `Tension pondérée` * max_y / max_tension + 0.03 * max_y,
-            label = round(`Tension pondérée`, 2),
-            color = "Tension pondérée"
+            y = `Tension réajustée` * max_y / max_tension + 0.03 * max_y,
+            label = round(`Tension réajustée`, 2),
+            color = "Tension réajustée"
           ),
-          vjust = 0,
+          vjust = 4.5,
           size = 3,
           color = "black",
           fontface = "bold"
@@ -1020,13 +1044,13 @@ server <- function(input, output, session) {
           values = c(
             "Étudiants demandeurs" = "#F4A280",
             "Étudiants demandeurs dernier tour" = "#F4A261",
-            "Places disponibles" = "#7EB3D5",
+            "Places proposées" = "#7EB3D5",
             "Places phase complémentaire" = "#7EB1E7"
           ),
           name = ""
         ) +
         scale_color_manual(
-          values = c("Tension pondérée" = "#3498db", "Tension brute" = "#004080"),
+          values = c("Tension réajustée" = "#3498db", "Tension brute" = "#004080"),
           name = ""
         ) +
         scale_y_continuous(
@@ -1036,7 +1060,7 @@ server <- function(input, output, session) {
           sec.axis = sec_axis(
             ~ . * max_tension / max_y,
             breaks = seq(0, max_tension, by = 0.5),
-            name = "Tension pondérée / Tension brute"
+            name = "Tension réajustée / Tension brute"
           )
         ) +
         labs(
@@ -1075,7 +1099,7 @@ server <- function(input, output, session) {
         filter(!is.na(`Places Total`), !is.na(`Année de gestion`), !is.na(`Secteur`), !is.na(`Résidence`)) %>%
         distinct(`Année de gestion`, `Secteur`, `Résidence`, .keep_all = TRUE) %>%
         group_by(`Année de gestion`) %>%
-        summarise(`Places disponibles` = sum(`Places Total`, na.rm = TRUE), .groups = "drop")
+        summarise(`Places proposées` = sum(`Places Total`, na.rm = TRUE), .groups = "drop")
 
       demandes <- filtered_data %>%
         filter(!is.na(`INE`), !is.na(`Année de gestion`), !is.na(`Secteur`)) %>%
@@ -1119,18 +1143,18 @@ server <- function(input, output, session) {
         left_join(renouvellement_data1[, c("Année de gestion", "Renouvellement confirmé", "(%) du parc")], by = "Année de gestion") %>%
         arrange(`Année de gestion`) %>%
         mutate(
-          `Tension brute` = round(`Étudiants demandeurs` / `Places disponibles`, 2),
-          `Tension pondérée` = round((`Étudiants demandeurs dernier tour` + (`Places disponibles` - `Places phase complémentaire`)) / `Places disponibles`, 2),
+          `Tension brute` = round(`Étudiants demandeurs` / `Places proposées`, 2),
+          `Tension réajustée` = round((`Étudiants demandeurs dernier tour` + (`Places proposées` - `Places phase complémentaire`)) / `Places proposées`, 2),
           `Évolution demandes (%)` = round((`Étudiants demandeurs` / lag(`Étudiants demandeurs`) - 1) * 100, 1),
-          `Évolution places (%)` = round((`Places disponibles` / lag(`Places disponibles`) - 1) * 100, 1),
-          `(%) Non réservé` = round(`Places phase complémentaire` / `Places disponibles` * 100, 2)
+          `Évolution places (%)` = round((`Places proposées` / lag(`Places proposées`) - 1) * 100, 1),
+          `(%) Non réservé` = round(`Places phase complémentaire` / `Places proposées` * 100, 2)
         )
 
       final1 <- resume_annee %>%
         select(
-          `Année de gestion`, `Logement total`, `Places disponibles`, `Places phase complémentaire`,
+          `Année de gestion`, `Logement total`, `Places proposées`, `Places phase complémentaire`,
           `(%) Non réservé`, `Étudiants demandeurs`, `Étudiants demandeurs dernier tour`, `Tension brute`,
-          `Tension pondérée`, `Évolution places (%)`, `Évolution demandes (%)`, `Renouvellement confirmé`,
+          `Tension réajustée`, `Évolution places (%)`, `Évolution demandes (%)`, `Renouvellement confirmé`,
           `(%) du parc`
         )
 
@@ -1204,7 +1228,7 @@ server <- function(input, output, session) {
         distinct(`Année de gestion`, `Secteur`, `Résidence`, `Places Total`) %>%
         group_by(`Année de gestion`, `Secteur`) %>%
         summarise(
-          `Places disponibles` = sum(`Places Total`, na.rm = TRUE),
+          `Places proposées` = sum(`Places Total`, na.rm = TRUE),
           .groups = "drop"
         )
       coords_secteur <- data() %>%
@@ -1233,12 +1257,12 @@ server <- function(input, output, session) {
         left_join(places_complémentaire, by = c("Année de gestion", "Secteur")) %>%
         left_join(demandes_tour4_filtrees, by = c("Année de gestion", "Secteur")) %>%
         mutate(
-          `Tension brut` = round(Demandes / `Places disponibles`, 2),
+          `Tension Brute` = round(Demandes / `Places proposées`, 2),
           moyenne_poids = mean(poids_secteur, na.rm = TRUE),
           `Concentration secteur` = round(poids_secteur / moyenne_poids, 2),
-          `Tension pondérée` = round((`Demandes_tour_4_filtres` +
-            (`Places disponibles` - `Places phase complémentaire`))
-          / `Places disponibles`, 2),
+          `Tension réajustée` = round((`Demandes_tour_4_filtres` +
+            (`Places proposées` - `Places phase complémentaire`))
+          / `Places proposées`, 2),
         )
       # Application des filtres graphiques
       map_data <- tension %>%
@@ -1251,7 +1275,7 @@ server <- function(input, output, session) {
         plot.new()
         title(main = "Aucune donnée à afficher")
       } else {
-        tension_col <- if (graph_choice() == "brut") "Tension brut" else "Tension pondérée"
+        tension_col <- if (graph_choice() == "Brute") "Tension Brute" else "Tension réajustée"
         map_data$label <- paste0(map_data$Secteur, "\n", map_data[[tension_col]])
 
         map_data$tension_classe <- cut(
@@ -1307,7 +1331,7 @@ server <- function(input, output, session) {
               "8 à 9" = "8 à 9",
               ">10" = ">10"
             ),
-            name = paste("Tension", if (graph_choice() == "brut") "brute" else "réelle")
+            name = paste("Tension", if (graph_choice() == "Brute") "brute" else "réajustée")
           ) +
           scale_size_manual(
             values = c(
@@ -1324,7 +1348,7 @@ server <- function(input, output, session) {
               "8 à 9" = "8 à 9",
               ">10" = ">10"
             ),
-            name = paste("Tension", if (graph_choice() == "brut") "brute" else "réelle")
+            name = paste("Tension", if (graph_choice() == "Brute") "brute" else "réajustée")
           ) +
           guides(
             fill = guide_legend(override.aes = list(shape = 21, color = "white")),
@@ -1332,8 +1356,8 @@ server <- function(input, output, session) {
           ) +
           ggtitle(
             paste0(
-              "Taux de tension ",
-              if (graph_choice() == "brut") "brut" else "pondérée",
+              "Tension ",
+              if (graph_choice() == "Brute") "brute" else "réajustée",
               " par secteur en ",
               input$select_annee
             )
@@ -1440,31 +1464,46 @@ server <- function(input, output, session) {
       filter(!is.na(`Places Total`), !is.na(`Année de gestion`), !is.na(`Secteur`), !is.na(`Résidence`)) %>%
       distinct(`Année de gestion`, `Secteur`, `Résidence`, .keep_all = TRUE) %>%
       group_by(`Année de gestion`, `Secteur`) %>%
-      summarise(`Places disponibles` = sum(`Places Total`, na.rm = TRUE), .groups = "drop")
+      summarise(`Places proposées` = sum(`Places Total`, na.rm = TRUE), .groups = "drop")
 
     # Demandes
     demandes <- filtered_data %>%
       filter(!is.na(`INE`), !is.na(`Année de gestion`), !is.na(`Secteur`)) %>%
       distinct(`Année de gestion`, `Secteur`, `INE`) %>%
-      group_by(`Année de gestion`, `Secteur`) %>%
-      summarise(`Étudiants demandeurs` = n(), .groups = "drop") %>%
       group_by(`Année de gestion`) %>%
-      mutate(poids_secteur = round(`Étudiants demandeurs` / sum(`Étudiants demandeurs`), 2)) %>%
-      ungroup()
-
+      summarise(`Étudiants demandeurs` = n(), .groups = "drop")
+    
     demandes_tour4 <- data() %>%
       filter(!is.na(INE), !is.na(`Sous-phase (Libellé)`)) %>%
-      mutate(
-        num_tour = as.numeric(gsub("\\D", "", `Sous-phase (Libellé)`))
-      ) %>%
+      mutate(num_tour = as.numeric(gsub("\\D", "", `Sous-phase (Libellé)`))) %>%
       group_by(`Année de gestion`, `Secteur`) %>%
       filter(num_tour == max(num_tour, na.rm = TRUE)) %>%
       ungroup() %>%
       distinct(INE, `Année de gestion`, `Secteur`) %>%
-      group_by(`Année de gestion`, `Secteur`) %>%
-      summarise(`Étudiants demandeurs dernier tour` = n(), .groups = "drop") %>%
       group_by(`Année de gestion`) %>%
-      summarise(`Étudiants demandeurs dernier tour` = sum(`Étudiants demandeurs dernier tour`), .groups = "drop")
+      summarise(`Étudiants demandeurs dernier tour` = n(), .groups = "drop")
+    
+    demandes_filtrees <- data() %>%
+      filter(
+        !is.na(`INE`), !is.na(`Echelon social`),
+        !(`Echelon social` %in% c("", "Hors Barème"))
+      ) %>%
+      distinct(`Année de gestion`,`Secteur`, `INE`) %>% 
+      group_by(`Année de gestion`) %>%
+      summarise(`Demandes 1` = n(), .groups = "drop")
+    
+    demandes_tour4_filtrees <- data() %>%
+      filter(
+        !is.na(INE), !is.na(`Sous-phase (Libellé)`), !is.na(`Echelon social`),
+        !(`Echelon social` %in% c("", "Hors Barème"))
+      ) %>%
+      mutate(num_tour = as.numeric(gsub("\\D", "", `Sous-phase (Libellé)`))) %>%
+      group_by(`Année de gestion`, `INE`) %>%
+      filter(num_tour == max(num_tour, na.rm = TRUE)) %>%
+      ungroup() %>%
+      distinct(`Année de gestion`, INE, `Secteur`) %>%
+      group_by(`Année de gestion`) %>%
+      summarise(`Demandes_tour_4_filtrees` = n(), .groups = "drop")
 
     # Phase complémentaire
     places_complémentaire <- filtered_data %>%
@@ -1476,11 +1515,11 @@ server <- function(input, output, session) {
           sum(`Places phase complémentaire`, na.rm = TRUE), .groups = "drop"
       )
 
-    # Résumé année globale avec la formule FINALE de tension pondérée
+    # Résumé année globale avec la formule FINALE de tension réajustée
     resume_annee <- place_data %>%
       group_by(`Année de gestion`) %>%
       summarise(
-        `Places disponibles` = sum(`Places disponibles`, na.rm = TRUE),
+        `Places proposées` = sum(`Places proposées`, na.rm = TRUE),
         .groups = "drop"
       ) %>%
       left_join(
@@ -1490,11 +1529,12 @@ server <- function(input, output, session) {
         by = "Année de gestion"
       ) %>%
       left_join(places_complémentaire, by = "Année de gestion") %>%
+      left_join(demandes_tour4_filtrees, by = "Année de gestion") %>%
       left_join(demandes_tour4, by = "Année de gestion") %>%
       mutate(
-        `Tension pondérée` = round((`Étudiants demandeurs dernier tour` + (`Places disponibles` -
-          `Places phase complémentaire`)) / `Places disponibles`, 2),
-        `Tension brute` = round(`Étudiants demandeurs` / `Places disponibles`, 2)
+        `Tension réajustée` = round((`Demandes_tour_4_filtrees` + (`Places proposées` -
+          `Places phase complémentaire`)) / `Places proposées`, 2),
+        `Tension brute` = round(`Étudiants demandeurs` / `Places proposées`, 2)
       ) %>%
       arrange(`Année de gestion`)
 
@@ -1513,9 +1553,9 @@ server <- function(input, output, session) {
         hoverinfo = "none"
       ) %>%
       add_bars(
-        y = ~`Places disponibles`, name = "Places disponibles",
+        y = ~`Places proposées`, name = "Places proposées",
         marker = list(color = "#7EB3D5"),
-        text = ~`Places disponibles`, textposition = "outside",
+        text = ~`Places proposées`, textposition = "outside",
         hoverinfo = "none"
       ) %>%
       add_bars(
@@ -1525,11 +1565,11 @@ server <- function(input, output, session) {
         hoverinfo = "none"
       ) %>%
       add_lines(
-        y = ~`Tension pondérée`, name = "Tension pondérée", yaxis = "y2",
+        y = ~`Tension réajustée`, name = "Tension réajustée", yaxis = "y2",
         line = list(color = "#3498db", width = 3),
         mode = "lines+markers",
         marker = list(color = "#3498db", size = 8),
-        text = ~ paste("Tension pondérée :", `Tension pondérée`),
+        text = ~ paste("Tension réajustée :", `Tension réajustée`),
         hoverinfo = "text"
       ) %>%
       add_lines(
@@ -1758,7 +1798,7 @@ server <- function(input, output, session) {
       distinct(`Année de gestion`, `Secteur`, `Résidence`, `Places Total`) %>%
       group_by(`Année de gestion`, `Secteur`) %>%
       summarise(
-        `Places disponibles` = sum(`Places Total`, na.rm = TRUE),
+        `Places proposées` = sum(`Places Total`, na.rm = TRUE),
         .groups = "drop"
       )
 
@@ -1777,7 +1817,7 @@ server <- function(input, output, session) {
       left_join(places_par_residence, by = c("Année de gestion", "Secteur")) %>%
       left_join(demandes_tour4, by = c("Année de gestion", "Secteur")) %>%
       mutate(
-        `Tension brute` = round(`Étudiants demandeurs` / `Places disponibles`, 2),
+        `Tension brute` = round(`Étudiants demandeurs` / `Places proposées`, 2),
         moyenne_poids = mean(poids_secteur, na.rm = TRUE),
         `Concentration secteur` = round(poids_secteur / moyenne_poids, 2),
         `Concentration secteur (%)` = round(poids_secteur * 100, 2)
@@ -1817,15 +1857,15 @@ server <- function(input, output, session) {
       left_join(demandes_filtrees, by = c("Année de gestion", "Secteur")) %>%
       left_join(demandes_tour4_filtrees, by = c("Année de gestion", "Secteur")) %>%
       mutate(
-        `(%) Non réservé` = round(`Places phase complémentaire` / `Places disponibles` * 100, 2),
-        `Tension pondérée` = round((`Demandes_tour_4_filtres` + (`Places disponibles` -
-          `Places phase complémentaire`)) / `Places disponibles`, 2)
+        `(%) Non réservé` = round(`Places phase complémentaire` / `Places proposées` * 100, 2),
+        `Tension réajustée` = round((`Demandes_tour_4_filtres` + (`Places proposées` -
+          `Places phase complémentaire`)) / `Places proposées`, 2)
       ) %>%
       select(
-        `Année de gestion`, `Secteur`, `Logement total`, `Places disponibles`,
+        `Année de gestion`, `Secteur`, `Logement total`, `Places proposées`,
         `Places phase complémentaire`, `(%) Non réservé`,
         `Étudiants demandeurs`, `Étudiants demandeurs dernier tour`,
-        `Concentration secteur (%)`, `Tension brute`, `Tension pondérée`,
+        `Concentration secteur (%)`, `Tension brute`, `Tension réajustée`,
         `Renouvellement confirmé`, `(%) du parc`
       )
 
@@ -1862,7 +1902,7 @@ server <- function(input, output, session) {
     places_data <- places_par_residence %>%
       group_by(`Année de gestion`, `Secteur`, `Résidence`) %>%
       summarise(
-        `Places disponibles` = sum(`Places Total`, na.rm = TRUE),
+        `Places proposées` = sum(`Places Total`, na.rm = TRUE),
         .groups = "drop"
       )
     #------------------ Demandes ----------------
@@ -1908,18 +1948,18 @@ server <- function(input, output, session) {
       left_join(renouvellement_data1, by = c("Année de gestion", "Secteur", "Résidence")) %>%
       left_join(places_complémentaire, by = c("Année de gestion", "Secteur", "Résidence")) %>%
       mutate(
-        Tension = round(`Étudiants demandeurs` / `Places disponibles`, 2),
-        `Tension minimal` = round(`Étudiants demandeurs dernier tour` / `Places disponibles`, 2)
+        Tension = round(`Étudiants demandeurs` / `Places proposées`, 2),
+        `Tension minimal` = round(`Étudiants demandeurs dernier tour` / `Places proposées`, 2)
       )
 
     final <- tension_data %>%
       filter(tolower(`Secteur`) %in% tolower(input$bassin)) %>%
       filter(`Année de gestion` == input$select_annee) %>%
       mutate(
-        `Non réservé (%)` = round(`Places phase complémentaire` / `Places disponibles` * 100, 2)
+        `Non réservé (%)` = round(`Places phase complémentaire` / `Places proposées` * 100, 2)
       ) %>%
       select(
-        `Année de gestion`, `Secteur`, `Résidence`, `Places disponibles`, `Places phase complémentaire`,
+        `Année de gestion`, `Secteur`, `Résidence`, `Places proposées`, `Places phase complémentaire`,
         `Non réservé (%)`, `Étudiants demandeurs`, `Étudiants demandeurs dernier tour`, Tension,
         `Tension minimal`, `Renouvellement confirmé`,
         `(%) du parc`
@@ -1954,7 +1994,7 @@ server <- function(input, output, session) {
       filter(!is.na(`Places Total`), !is.na(`Année de gestion`), !is.na(`Secteur`), !is.na(`Résidence`)) %>%
       distinct(`Année de gestion`, `Secteur`, `Résidence`, .keep_all = TRUE) %>%
       group_by(`Année de gestion`) %>%
-      summarise(`Places disponibles` = sum(`Places Total`, na.rm = TRUE), .groups = "drop")
+      summarise(`Places proposées` = sum(`Places Total`, na.rm = TRUE), .groups = "drop")
 
     #------------------ DEMANDES ----------------
     demandes <- filtered_data %>%
@@ -1962,8 +2002,7 @@ server <- function(input, output, session) {
       distinct(`Année de gestion`, `Secteur`, `INE`) %>%
       group_by(`Année de gestion`) %>%
       summarise(`Étudiants demandeurs` = n(), .groups = "drop")
-
-    #------------------ DEMANDES DERNIER TOUR ----------------
+    
     demandes_tour4 <- data() %>%
       filter(!is.na(INE), !is.na(`Sous-phase (Libellé)`)) %>%
       mutate(num_tour = as.numeric(gsub("\\D", "", `Sous-phase (Libellé)`))) %>%
@@ -1973,6 +2012,28 @@ server <- function(input, output, session) {
       distinct(INE, `Année de gestion`, `Secteur`) %>%
       group_by(`Année de gestion`) %>%
       summarise(`Étudiants demandeurs dernier tour` = n(), .groups = "drop")
+    
+    demandes_filtrees <- data() %>%
+      filter(
+        !is.na(`INE`), !is.na(`Echelon social`),
+        !(`Echelon social` %in% c("", "Hors Barème"))
+      ) %>%
+      distinct(`Année de gestion`,`Secteur`, `INE`) %>% 
+      group_by(`Année de gestion`) %>%
+      summarise(`Demandes 1` = n(), .groups = "drop")
+    
+    demandes_tour4_filtrees <- data() %>%
+      filter(
+        !is.na(INE), !is.na(`Sous-phase (Libellé)`), !is.na(`Echelon social`),
+        !(`Echelon social` %in% c("", "Hors Barème"))
+      ) %>%
+      mutate(num_tour = as.numeric(gsub("\\D", "", `Sous-phase (Libellé)`))) %>%
+      group_by(`Année de gestion`, `INE`) %>%
+      filter(num_tour == max(num_tour, na.rm = TRUE)) %>%
+      ungroup() %>%
+      distinct(`Année de gestion`, INE, `Secteur`) %>%
+      group_by(`Année de gestion`) %>%
+      summarise(`Demandes_tour_4_filtrees` = n(), .groups = "drop")
 
     #------------------ PHASE COMPLÉMENTAIRE ----------------
     places_complémentaire <- filtered_data %>%
@@ -2001,20 +2062,22 @@ server <- function(input, output, session) {
       left_join(demandes_tour4, by = "Année de gestion") %>%
       left_join(places_complémentaire, by = "Année de gestion") %>%
       left_join(renouvellement_data1[, c("Année de gestion", "Renouvellement confirmé", "(%) du parc")], by = "Année de gestion") %>%
+      left_join(demandes_tour4_filtrees, by = "Année de gestion") %>% 
       arrange(`Année de gestion`) %>%
       mutate(
-        `Tension brute` = round(`Étudiants demandeurs` / `Places disponibles`, 2),
-        `Tension pondérée` = round((`Étudiants demandeurs dernier tour` + (`Places disponibles` - `Places phase complémentaire`)) / `Places disponibles`, 2),
+        `Tension brute` = round(`Étudiants demandeurs` / `Places proposées`, 2),
+        `Tension réajustée` = round((`Demandes_tour_4_filtrees` + (`Places proposées` - `Places phase complémentaire`))
+                                   / `Places proposées`, 2),
         `Évolution demandes (%)` = round((`Étudiants demandeurs` / lag(`Étudiants demandeurs`) - 1) * 100, 1),
-        `Évolution places (%)` = round((`Places disponibles` / lag(`Places disponibles`) - 1) * 100, 1),
-        `(%) Non réservé` = round(`Places phase complémentaire` / `Places disponibles` * 100, 2)
+        `Évolution places (%)` = round((`Places proposées` / lag(`Places proposées`) - 1) * 100, 1),
+        `(%) Non réservé` = round(`Places phase complémentaire` / `Places proposées` * 100, 2)
       )
 
     final1 <- resume_annee %>%
       select(
-        `Année de gestion`, `Logement total`, `Places disponibles`, `Places phase complémentaire`,
+        `Année de gestion`, `Logement total`, `Places proposées`, `Places phase complémentaire`,
         `(%) Non réservé`, `Étudiants demandeurs`, `Étudiants demandeurs dernier tour`, `Tension brute`,
-        `Tension pondérée`, `Évolution places (%)`, `Évolution demandes (%)`, `Renouvellement confirmé`,
+        `Tension réajustée`, `Évolution places (%)`, `Évolution demandes (%)`, `Renouvellement confirmé`,
         `(%) du parc`
       )
 
