@@ -1,12 +1,13 @@
-logement_unique <- logement %>%
+logement_unique1 <- logement %>%
   distinct(`Résidence`, `Secteur`)
 
 Test <- read_xlsx("C:/Users/jeremie.dupont/Desktop/Stage/Logement/Renouvellement.xlsx") %>%
   select(`INE`, `Résidence`, `Année de gestion`, `Statut de la demande`) %>%
-  filter(`Résidence` != "HLM Conventionnés", `Résidence` != "Maison des Gardes", `Résidence` != "TOTAL") %>%
+  filter(`Résidence` != "Résidence HLM", `Résidence` != "Maison des Gardes", `Résidence` != "TOTAL",
+         `Résidence` != "Résidence Maison Internationale des Chercheurs") %>%
   filter(!is.na(`Année de gestion`)) %>%
   mutate(`Année de gestion` = as.numeric(`Année de gestion`)) %>%
-  left_join(logement_unique, by = "Résidence") %>%
+  left_join(logement_unique1, by = "Résidence") %>%
   group_by(`Résidence`, `Année de gestion`, `Secteur`) %>%
   summarise(
     `Demandes renouvellement` = n(),
